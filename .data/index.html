@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Underbar Lighting</title>
+    <style>
+      :root {
+        --bg: #0f1418;
+        --panel: #1a2228;
+        --accent: #f4b860;
+        --accent-strong: #e08f2a;
+        --text: #e6edf3;
+        --muted: #9aa7b2;
+        --danger: #d34b4b;
+        --success: #42c792;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Avenir Next", "Trebuchet MS", "Gill Sans", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(1200px 600px at 10% -10%, #28333b 0%, transparent 55%),
+          radial-gradient(900px 500px at 90% 0%, #1f2b33 0%, transparent 60%),
+          var(--bg);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+
+      .panel {
+        width: min(720px, 95vw);
+        background: linear-gradient(135deg, rgba(26, 34, 40, 0.92), rgba(13, 18, 22, 0.95));
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 20px;
+        padding: 24px;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+      }
+
+      header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(24px, 3vw, 32px);
+        letter-spacing: 0.6px;
+      }
+
+      .status {
+        font-size: 12px;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .grid {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+
+      .card {
+        background: rgba(22, 28, 33, 0.9);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 16px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .card h2 {
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .toggle-row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .btn {
+        border: none;
+        background: var(--accent);
+        color: #19120b;
+        padding: 10px 16px;
+        border-radius: 999px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        box-shadow: 0 8px 18px rgba(244, 184, 96, 0.25);
+      }
+
+      .btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 12px 24px rgba(244, 184, 96, 0.35);
+      }
+
+      .btn.off {
+        background: #2a353d;
+        color: var(--text);
+        box-shadow: none;
+      }
+
+      .btn.danger {
+        background: var(--danger);
+        color: #fff;
+      }
+
+      .value {
+        font-size: 20px;
+        font-weight: 600;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        accent-color: var(--accent-strong);
+      }
+
+      select,
+      input[type="color"] {
+        width: 100%;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: #0d1216;
+        color: var(--text);
+      }
+
+      .select-wrap {
+        position: relative;
+      }
+
+      .select-wrap select {
+        appearance: none;
+        padding-right: 36px;
+        background:
+          linear-gradient(135deg, rgba(244, 184, 96, 0.12), rgba(0, 0, 0, 0)) no-repeat,
+          #0d1216;
+        border: 1px solid rgba(244, 184, 96, 0.35);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+      }
+
+      .select-wrap::after {
+        content: "▾";
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--accent);
+        font-size: 18px;
+        pointer-events: none;
+        text-shadow: 0 0 12px rgba(244, 184, 96, 0.35);
+      }
+
+      .footer {
+        margin-top: 18px;
+        font-size: 12px;
+        color: var(--muted);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: space-between;
+      }
+
+      .pill {
+        background: rgba(255, 255, 255, 0.06);
+        padding: 6px 10px;
+        border-radius: 999px;
+      }
+
+      .ascii-panel {
+        margin-top: 12px;
+        padding: 12px;
+        border-radius: 14px;
+        background: linear-gradient(160deg, rgba(15, 22, 28, 0.95), rgba(8, 12, 16, 0.95));
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        font-family: "JetBrains Mono", "Fira Code", "Source Code Pro", "Courier New", monospace;
+        font-size: 14px;
+        letter-spacing: 0.15em;
+        color: #f1c980;
+        text-shadow: 0 0 12px rgba(244, 184, 96, 0.25);
+        white-space: pre;
+        min-height: 52px;
+      }
+
+      .ascii-muted {
+        color: rgba(244, 184, 96, 0.55);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="panel">
+      <header>
+        <h1>Underbar Lighting</h1>
+        <div class="status" id="statusText">DISCONNECTED</div>
+      </header>
+
+      <section class="grid">
+        <div class="card">
+          <h2>Power</h2>
+          <div class="toggle-row">
+            <button class="btn" id="powerBtn">Power On</button>
+            <button class="btn off" id="powerOffBtn">Off</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Brightness</h2>
+          <div class="value" id="brightnessValue">0</div>
+          <input id="brightness" type="range" min="0" max="255" value="12" />
+        </div>
+
+        <div class="card">
+          <h2>Effect</h2>
+          <div class="select-wrap">
+            <select id="effect">
+              <option value="0">Marquee</option>
+              <option value="1">Solid</option>
+              <option value="2">Rainbow</option>
+              <option value="3">Twinkle</option>
+              <option value="4">Comet</option>
+              <option value="5">Bounce</option>
+              <option value="6">Fire</option>
+              <option value="7">Meteor</option>
+              <option value="8">Palette</option>
+              <option value="9">Double Palette</option>
+              <option value="10">Star Effect</option>
+            </select>
+          </div>
+          <div class="ascii-panel" id="effectAscii">---</div>
+        </div>
+
+        <div class="card">
+          <h2>Speed</h2>
+          <div class="value" id="speedValue">0</div>
+          <input id="speed" type="range" min="1" max="255" value="96" />
+        </div>
+
+        <div class="card">
+          <h2>Count</h2>
+          <div class="value" id="countValue">0</div>
+          <input id="count" type="range" min="1" max="16" value="4" />
+        </div>
+
+        <div class="card">
+          <h2>Color</h2>
+          <input id="color" type="color" value="#ffffff" />
+          <button class="btn off" id="applyColor">Apply Color</button>
+        </div>
+      </section>
+
+      <div class="footer">
+        <div class="pill" id="otaStatus">OTA: unknown</div>
+        <div class="pill" id="effectStatus">Effect: --</div>
+        <div class="pill" id="powerStatus">Power: --</div>
+      </div>
+    </main>
+
+    <script>
+      const statusText = document.getElementById("statusText");
+      const powerBtn = document.getElementById("powerBtn");
+      const powerOffBtn = document.getElementById("powerOffBtn");
+      const brightness = document.getElementById("brightness");
+      const brightnessValue = document.getElementById("brightnessValue");
+      const speedValue = document.getElementById("speedValue");
+      const countValue = document.getElementById("countValue");
+      const effect = document.getElementById("effect");
+      const speed = document.getElementById("speed");
+      const count = document.getElementById("count");
+      const color = document.getElementById("color");
+      const applyColor = document.getElementById("applyColor");
+      const otaStatus = document.getElementById("otaStatus");
+      const effectStatus = document.getElementById("effectStatus");
+      const powerStatus = document.getElementById("powerStatus");
+      const effectAscii = document.getElementById("effectAscii");
+
+      const effectLabels = {
+        0: "Marquee",
+        1: "Solid",
+        2: "Rainbow",
+        3: "Twinkle",
+        4: "Comet",
+        5: "Bounce",
+        6: "Fire",
+        7: "Meteor",
+        8: "Palette",
+        9: "Double Palette",
+        10: "Star Effect",
+      };
+
+      let debounceTimer = null;
+      let asciiEffect = 0;
+      let asciiTick = 0;
+      let asciiTimer = null;
+
+      function setStatus(ok) {
+        statusText.textContent = ok ? "CONNECTED" : "DISCONNECTED";
+        statusText.style.color = ok ? "var(--success)" : "var(--muted)";
+      }
+
+      function sendUpdate(params) {
+        const query = new URLSearchParams(params);
+        return fetch(`/set?${query.toString()}`)
+          .then((res) => res.json())
+          .then((data) => {
+            applyState(data);
+            return data;
+          })
+          .catch(() => setStatus(false));
+      }
+
+      function applyState(data) {
+        if (!data) return;
+        setStatus(true);
+        brightness.value = data.brightness ?? brightness.value;
+        brightnessValue.textContent = brightness.value;
+        speed.value = data.speed ?? speed.value;
+        speedValue.textContent = speed.value;
+        count.value = data.count ?? count.value;
+        countValue.textContent = count.value;
+        effect.value = data.effect ?? effect.value;
+        powerStatus.textContent = `Power: ${data.power ? "On" : "Off"}`;
+        effectStatus.textContent = `Effect: ${effectLabels[data.effect] ?? "Unknown"}`;
+        powerBtn.textContent = data.power ? "Power On" : "Power Off";
+        otaStatus.textContent = `OTA: ${data.ota || "unknown"}`;
+        setAsciiEffect(data.effect ?? 0);
+      }
+
+      function loadStatus() {
+        fetch("/status")
+          .then((res) => res.json())
+          .then((data) => {
+            applyState(data);
+          })
+          .catch(() => setStatus(false));
+      }
+
+      powerBtn.addEventListener("click", () => {
+        const next = powerBtn.textContent.includes("On") ? "off" : "on";
+        sendUpdate({ power: next });
+      });
+
+      powerOffBtn.addEventListener("click", () => {
+        sendUpdate({ power: "off" });
+      });
+
+      brightness.addEventListener("input", () => {
+        brightnessValue.textContent = brightness.value;
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          sendUpdate({ brightness: brightness.value });
+        }, 120);
+      });
+
+      speed.addEventListener("input", () => {
+        speedValue.textContent = speed.value;
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          sendUpdate({ speed: speed.value });
+        }, 120);
+      });
+
+      count.addEventListener("input", () => {
+        countValue.textContent = count.value;
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          sendUpdate({ count: count.value });
+        }, 120);
+      });
+
+      effect.addEventListener("change", () => {
+        sendUpdate({ effect: effect.value });
+      });
+
+      applyColor.addEventListener("click", () => {
+        const hex = color.value.replace("#", "");
+        const r = parseInt(hex.slice(0, 2), 16);
+        const g = parseInt(hex.slice(2, 4), 16);
+        const b = parseInt(hex.slice(4, 6), 16);
+        sendUpdate({ r, g, b });
+      });
+
+      function lcg(seed) {
+        return (seed * 1664525 + 1013904223) >>> 0;
+      }
+
+      function buildMarquee(t) {
+        const len = 26;
+        const base = "***   ".repeat(6);
+        const ping = t % ((base.length - len) * 2);
+        const offset = ping < base.length - len ? ping : (base.length - len) * 2 - ping;
+        return base.slice(offset, offset + len);
+      }
+
+      function buildComet(t) {
+        const len = 26;
+        const pos = t % (len * 2);
+        const head = pos < len ? pos : len * 2 - pos - 1;
+        const chars = Array(len).fill(" ");
+        chars[head] = "@";
+        if (head > 0) chars[head - 1] = "*";
+        if (head > 1) chars[head - 2] = ".";
+        return chars.join("");
+      }
+
+      function buildMeteor(t) {
+        const len = 26;
+        const a = t % len;
+        const b = (t + 9) % len;
+        const chars = Array(len).fill(" ");
+        chars[a] = "#";
+        if (a > 0) chars[a - 1] = "+";
+        if (a > 1) chars[a - 2] = ".";
+        chars[b] = "#";
+        if (b > 0) chars[b - 1] = "+";
+        return chars.join("");
+      }
+
+      function buildFire(t) {
+        const len = 26;
+        const ramp = " .:-=+*#%@";
+        let line1 = "";
+        let line2 = "";
+        for (let i = 0; i < len; i++) {
+          const seed = lcg(t * 31 + i * 17);
+          const heat = (seed % 100) / 100;
+          const idx1 = Math.min(ramp.length - 1, Math.floor(heat * ramp.length));
+          const idx2 = Math.min(ramp.length - 1, Math.floor((heat * 0.7) * ramp.length));
+          line1 += ramp[idx1];
+          line2 += ramp[idx2];
+        }
+        return `${line1}\n${line2}`;
+      }
+
+      function buildTwinkle(t) {
+        const len = 26;
+        const chars = Array(len).fill(" ");
+        for (let i = 0; i < 5; i++) {
+          const seed = lcg(t * 13 + i * 97);
+          chars[seed % len] = (seed % 3) === 0 ? "*" : "+";
+        }
+        return chars.join("");
+      }
+
+      function buildStars(t) {
+        const len = 26;
+        const chars = Array(len).fill(".");
+        for (let i = 0; i < 4; i++) {
+          const seed = lcg(t * 19 + i * 211);
+          chars[seed % len] = "*";
+        }
+        return chars.join("");
+      }
+
+      function buildPalette(t) {
+        const len = 26;
+        const ramp = " .:-=+*#%@";
+        let line = "";
+        for (let i = 0; i < len; i++) {
+          const idx = (i + t) % ramp.length;
+          line += ramp[idx];
+        }
+        return line;
+      }
+
+      function buildDoublePalette(t) {
+        const len = 26;
+        const rampA = " .:-=+*#%@";
+        const rampB = "@%#*+=-:. ";
+        let line = "";
+        for (let i = 0; i < len; i++) {
+          const idxA = (i + t) % rampA.length;
+          const idxB = (rampB.length - 1 - ((i + t * 2) % rampB.length));
+          line += (t % 2 === 0) ? rampA[idxA] : rampB[idxB];
+        }
+        return line;
+      }
+
+      function buildAscii(effectId, t) {
+        switch (Number(effectId)) {
+          case 0:
+            return buildMarquee(t);
+          case 1:
+            return "##########################";
+          case 2:
+            return buildPalette(t);
+          case 3:
+            return buildTwinkle(t);
+          case 4:
+            return buildComet(t);
+          case 5:
+            return buildComet(t + 4);
+          case 6:
+            return buildFire(t);
+          case 7:
+            return buildMeteor(t);
+          case 8:
+            return buildPalette(t);
+          case 9:
+            return buildDoublePalette(t);
+          case 10:
+            return buildStars(t);
+          default:
+            return "---";
+        }
+      }
+
+      function renderAscii() {
+        asciiTick += 1;
+        const frame = buildAscii(asciiEffect, asciiTick);
+        effectAscii.textContent = frame;
+      }
+
+      function setAsciiEffect(id) {
+        asciiEffect = Number(id) || 0;
+        asciiTick = 0;
+        renderAscii();
+        if (!asciiTimer) {
+          asciiTimer = setInterval(renderAscii, 140);
+        }
+      }
+
+      loadStatus();
+    </script>
+  </body>
+</html>
