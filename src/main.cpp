@@ -59,6 +59,7 @@
 #include <FastLED.h>
 #include <Lib8tion.h>
 #include <color.h>
+#include "secrets.h"
 
 // OLED definitions
 // #define OLED_SCL 22      // Not required as it is the default
