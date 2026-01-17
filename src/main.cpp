@@ -51,10 +51,12 @@
 #include <SPIFFS.h>
 #include <ArduinoOTA.h>
 #include <Update.h>
+#if ENABLE_BLE
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#endif
 #define FASTLED_INTERNAL
 #include <FastLED.h>
 #include <Lib8tion.h>
@@ -66,6 +68,7 @@
 // #define OLED_SDA 21      // for I2C on the ESP32
 #define OLED_RULER_TEST 0
 
+// TODO: Find the real number of LEDs
 #define NUM_LEDS 442 // FastLED definitions
 #define LED_PIN 5   // Data pin for FastLED
 
@@ -153,9 +156,11 @@ static BouncingBallEffect g_bounceEffect(NUM_LEDS, 3, 20, false);
 static uint8_t g_lastBounceCount = 0;
 static uint8_t g_effectSpeedPreset[EFFECT_COUNT] = {96, 96, 96, 96, 96, 96, 120, 140, 110, 110, 80};
 static uint8_t g_effectCountPreset[EFFECT_COUNT] = {4, 4, 4, 4, 5, 3, 3, 4, 6, 6, 4};
+#if ENABLE_BLE
 static BLEServer *g_bleServer = nullptr;
 static BLECharacteristic *g_bleTx = nullptr;
 static bool g_bleConnected = false;
+#endif
 
 void ApplyCommand(const char *command);
 
@@ -182,14 +187,19 @@ void SaveEffectPreset(EffectId effect)
 
 void SendBleLine(const char *line)
 {
+#if ENABLE_BLE
   if (!g_bleConnected || g_bleTx == nullptr || line == nullptr)
   {
     return;
   }
   g_bleTx->setValue(const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(line)), strlen(line));
   g_bleTx->notify();
+#else
+  (void)line;
+#endif
 }
 
+#if ENABLE_BLE
 class BleServerCallbacks : public BLEServerCallbacks
 {
   void onConnect(BLEServer *server) override
@@ -223,9 +233,11 @@ class BleRxCallbacks : public BLECharacteristicCallbacks
     ApplyCommand(value.c_str());
   }
 };
+#endif
 
 void SetupBleSerial()
 {
+#if ENABLE_BLE
   BLEDevice::init("UnderbarLighting");
   g_bleServer = BLEDevice::createServer();
   g_bleServer->setCallbacks(new BleServerCallbacks());
@@ -245,6 +257,9 @@ void SetupBleSerial()
   BLEAdvertising *advertising = BLEDevice::getAdvertising();
   advertising->addServiceUUID("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");
   advertising->start();
+#else
+  Serial.println("BLE disabled.");
+#endif
 }
 
 const char *EffectName(EffectId effect)
@@ -270,15 +285,19 @@ const char *EffectName(EffectId effect)
   case EFFECT_DOUBLEPALETTE:
     return "DualPal";
   case EFFECT_STAREFFECT:
-    return "Stars";
+    return "*Stars*";
   case EFFECT_MARQUEE:
   default:
-    return "Marq";
+    return "Marquee";
   }
 }
 
 #ifndef ENABLE_OTA
 #define ENABLE_OTA 0
+#endif
+
+#ifndef ENABLE_BLE
+#define ENABLE_BLE 0
 #endif
 
 #ifndef WIFI_SSID
@@ -865,11 +884,29 @@ void loop()
       g_OLED.drawBox(0, 0, kOledTextXOffset, kOledHeight);
       g_OLED.setDrawColor(1);
       g_OLED.setCursor(kOledTextXOffset, g_oledTopOffset);
-      g_OLED.printf("FPS:%3u Fx:%s", FastLED.getFPS(), effectName);
+      g_OLED.printf("Fx:%s ", effectName);
+      g_OLED.setCursor(80, g_oledTopOffset);
+      g_OLED.printf("FPS:%3u", FastLED.getFPS());
       g_OLED.setCursor(kOledTextXOffset, g_oledTopOffset + g_lineHeight);
-      g_OLED.printf("Pwr:%4umW Bright:%3u", calculate_unscaled_power_mW(g_LEDs, NUM_LEDS), g_Brightness);
+      uint32_t power_mw = calculate_unscaled_power_mW(g_LEDs, NUM_LEDS);
+      if (power_mw >= 1000)
+      {
+        uint32_t watts = power_mw / 1000;
+        uint32_t tenths = (power_mw % 1000) / 100;
+        g_OLED.printf("Brt:%3u   Pwr:%2u.%01uW", g_Brightness, watts, tenths);
+      }
+      else
+      {
+        g_OLED.printf("Brt:%3u Pwr:%4umW", g_Brightness, power_mw);
+      }
       g_OLED.setCursor(kOledTextXOffset, g_oledTopOffset + (g_lineHeight * 2));
-      g_OLED.printf("OTA: %s IP: %s", g_otaStatus, WiFi.localIP().toString().c_str());
+      g_OLED.setFont(u8g2_font_5x7_tf);
+      String ip = WiFi.localIP().toString();
+      g_OLED.print(ip);
+      const int otaX = kOledTextXOffset + (13 * 6);
+      g_OLED.setCursor(otaX, g_oledTopOffset + (g_lineHeight * 2));
+      g_OLED.printf("OTA:%s", g_otaStatus);
+      g_OLED.setFont(u8g2_font_6x10_tf);
       g_OLED.sendBuffer();
     }
 
