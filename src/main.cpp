@@ -51,17 +51,53 @@
 #include <SPIFFS.h>
 #include <ArduinoOTA.h>
 #include <Update.h>
-#if ENABLE_BLE
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
-#endif
+#include <PubSubClient.h>
+#include <ArduinoJson.h>
 #define FASTLED_INTERNAL
 #include <FastLED.h>
 #include <Lib8tion.h>
 #include <color.h>
 #include "secrets.h"
+
+#ifndef MQTT_HOST
+#define MQTT_HOST "CHANGE_ME"
+#endif
+
+#ifndef MQTT_PORT
+#define MQTT_PORT 1883
+#endif
+
+#ifndef MQTT_USER
+#define MQTT_USER ""
+#endif
+
+#ifndef MQTT_PASS
+#define MQTT_PASS ""
+#endif
+
+#ifndef MQTT_CLIENT_ID
+#define MQTT_CLIENT_ID "underbar-lighting"
+#endif
+
+#ifndef MQTT_DISCOVERY_PREFIX
+#define MQTT_DISCOVERY_PREFIX "homeassistant"
+#endif
+
+#ifndef ENABLE_OTA
+#define ENABLE_OTA 0
+#endif
+
+#ifndef WIFI_SSID
+#define WIFI_SSID "CHANGE_ME"
+#endif
+
+#ifndef WIFI_PASS
+#define WIFI_PASS "CHANGE_ME"
+#endif
+
+#ifndef OTA_HOSTNAME
+#define OTA_HOSTNAME "underbar-lighting"
+#endif
 
 // OLED definitions
 // #define OLED_SCL 22      // Not required as it is the default
@@ -75,6 +111,7 @@
 CRGB g_LEDs[NUM_LEDS] = {0}; // Frame buffer for FastLED
 
 void DrawPixels(float fPos, float count, CRGB color);
+void ApplyState();
 
 #include "effects/marquee.h"
 #include "effects/rainbow.h"
@@ -116,6 +153,8 @@ enum EffectId : uint8_t
   EFFECT_COUNT
 };
 
+const char *EffectName(EffectId effect);
+
 struct LightingState
 {
   bool power;
@@ -152,16 +191,14 @@ static const char *g_otaStatus = "OFF";
 static uint8_t g_i2cAddress = 0;
 static bool g_wifiConnected = false;
 static WebServer g_httpServer(80);
+static WiFiClient g_wifiClient;
+static PubSubClient g_mqttClient(g_wifiClient);
+static bool g_mqttConnected = false;
+static uint32_t g_lastMqttAttempt = 0;
 static BouncingBallEffect g_bounceEffect(NUM_LEDS, 3, 20, false);
 static uint8_t g_lastBounceCount = 0;
 static uint8_t g_effectSpeedPreset[EFFECT_COUNT] = {96, 96, 96, 96, 96, 96, 120, 140, 110, 110, 80};
 static uint8_t g_effectCountPreset[EFFECT_COUNT] = {4, 4, 4, 4, 5, 3, 3, 4, 6, 6, 4};
-#if ENABLE_BLE
-static BLEServer *g_bleServer = nullptr;
-static BLECharacteristic *g_bleTx = nullptr;
-static bool g_bleConnected = false;
-#endif
-
 void ApplyCommand(const char *command);
 
 EffectId ClampEffect(int effect)
@@ -171,6 +208,22 @@ EffectId ClampEffect(int effect)
     return EFFECT_MARQUEE;
   }
   return static_cast<EffectId>(effect);
+}
+
+EffectId EffectFromName(const char *name)
+{
+  if (name == nullptr)
+  {
+    return EFFECT_MARQUEE;
+  }
+  for (uint8_t i = 0; i < EFFECT_COUNT; ++i)
+  {
+    if (strcasecmp(name, EffectName(static_cast<EffectId>(i))) == 0)
+    {
+      return static_cast<EffectId>(i);
+    }
+  }
+  return EFFECT_MARQUEE;
 }
 
 void ApplyEffectPreset(EffectId effect)
@@ -187,79 +240,7 @@ void SaveEffectPreset(EffectId effect)
 
 void SendBleLine(const char *line)
 {
-#if ENABLE_BLE
-  if (!g_bleConnected || g_bleTx == nullptr || line == nullptr)
-  {
-    return;
-  }
-  g_bleTx->setValue(const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(line)), strlen(line));
-  g_bleTx->notify();
-#else
   (void)line;
-#endif
-}
-
-#if ENABLE_BLE
-class BleServerCallbacks : public BLEServerCallbacks
-{
-  void onConnect(BLEServer *server) override
-  {
-    g_bleConnected = true;
-  }
-
-  void onDisconnect(BLEServer *server) override
-  {
-    g_bleConnected = false;
-    if (server)
-    {
-      server->getAdvertising()->start();
-    }
-  }
-};
-
-class BleRxCallbacks : public BLECharacteristicCallbacks
-{
-  void onWrite(BLECharacteristic *characteristic) override
-  {
-    std::string value = characteristic->getValue();
-    if (value.empty())
-    {
-      return;
-    }
-    if (value.back() == '\n' || value.back() == '\r')
-    {
-      value.pop_back();
-    }
-    ApplyCommand(value.c_str());
-  }
-};
-#endif
-
-void SetupBleSerial()
-{
-#if ENABLE_BLE
-  BLEDevice::init("UnderbarLighting");
-  g_bleServer = BLEDevice::createServer();
-  g_bleServer->setCallbacks(new BleServerCallbacks());
-
-  BLEService *service = g_bleServer->createService("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");
-  BLECharacteristic *rx = service->createCharacteristic(
-      "6E400002-B5A3-F393-E0A9-E50E24DCCA9E",
-      BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
-  g_bleTx = service->createCharacteristic(
-      "6E400003-B5A3-F393-E0A9-E50E24DCCA9E",
-      BLECharacteristic::PROPERTY_NOTIFY);
-
-  g_bleTx->addDescriptor(new BLE2902());
-  rx->setCallbacks(new BleRxCallbacks());
-
-  service->start();
-  BLEAdvertising *advertising = BLEDevice::getAdvertising();
-  advertising->addServiceUUID("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");
-  advertising->start();
-#else
-  Serial.println("BLE disabled.");
-#endif
 }
 
 const char *EffectName(EffectId effect)
@@ -292,25 +273,258 @@ const char *EffectName(EffectId effect)
   }
 }
 
-#ifndef ENABLE_OTA
-#define ENABLE_OTA 0
-#endif
+void PublishMqttState()
+{
+  if (!g_mqttClient.connected())
+  {
+    return;
+  }
 
-#ifndef ENABLE_BLE
-#define ENABLE_BLE 0
-#endif
+  StaticJsonDocument<256> doc;
+  doc["state"] = g_State.power ? "ON" : "OFF";
+  doc["brightness"] = g_State.brightness;
+  doc["effect"] = EffectName(g_State.effect);
+  doc["color_mode"] = "rgb";
 
-#ifndef WIFI_SSID
-#define WIFI_SSID "CHANGE_ME"
-#endif
+  JsonObject color = doc.createNestedObject("color");
+  color["r"] = g_State.color.r;
+  color["g"] = g_State.color.g;
+  color["b"] = g_State.color.b;
 
-#ifndef WIFI_PASS
-#define WIFI_PASS "CHANGE_ME"
-#endif
+  doc["speed"] = g_State.speed;
+  doc["count"] = g_State.count;
 
-#ifndef OTA_HOSTNAME
-#define OTA_HOSTNAME "underbar-lighting"
-#endif
+  char payload[256];
+  const size_t len = serializeJson(doc, payload, sizeof(payload));
+  g_mqttClient.publish(kHAConfig.state_topic, reinterpret_cast<const uint8_t *>(payload), len, true);
+}
+
+void PublishMqttDiscovery()
+{
+  if (!g_mqttClient.connected())
+  {
+    return;
+  }
+
+  char topic[96];
+  snprintf(topic, sizeof(topic), "%s/light/%s/config", MQTT_DISCOVERY_PREFIX, kHAConfig.unique_id);
+
+  StaticJsonDocument<512> doc;
+  doc["name"] = kHAConfig.device_name;
+  doc["uniq_id"] = kHAConfig.unique_id;
+  doc["cmd_t"] = kHAConfig.command_topic;
+  doc["stat_t"] = kHAConfig.state_topic;
+  doc["avty_t"] = kHAConfig.availability_topic;
+  doc["schema"] = "json";
+  doc["brightness"] = true;
+  doc["rgb"] = true;
+  doc["effect"] = true;
+  JsonArray colorModes = doc.createNestedArray("supported_color_modes");
+  colorModes.add("rgb");
+
+  JsonArray effects = doc.createNestedArray("effect_list");
+  for (uint8_t i = 0; i < EFFECT_COUNT; ++i)
+  {
+    effects.add(EffectName(static_cast<EffectId>(i)));
+  }
+
+  JsonObject device = doc.createNestedObject("device");
+  device["name"] = kHAConfig.device_name;
+  device["ids"] = kHAConfig.unique_id;
+  device["mdl"] = "UnderBarLighting";
+  device["mf"] = "Somerled Design";
+
+  char payload[512];
+  const size_t len = serializeJson(doc, payload, sizeof(payload));
+  if (!g_mqttClient.publish(topic, reinterpret_cast<const uint8_t *>(payload), len, true))
+  {
+    Serial.println("MQTT discovery publish failed.");
+  }
+}
+
+bool PublishMqttDiscoveryWithResult()
+{
+  if (!g_mqttClient.connected())
+  {
+    return false;
+  }
+
+  char topic[96];
+  snprintf(topic, sizeof(topic), "%s/light/%s/config", MQTT_DISCOVERY_PREFIX, kHAConfig.unique_id);
+
+  StaticJsonDocument<512> doc;
+  doc["name"] = kHAConfig.device_name;
+  doc["uniq_id"] = kHAConfig.unique_id;
+  doc["cmd_t"] = kHAConfig.command_topic;
+  doc["stat_t"] = kHAConfig.state_topic;
+  doc["avty_t"] = kHAConfig.availability_topic;
+  doc["schema"] = "json";
+  doc["brightness"] = true;
+  doc["rgb"] = true;
+  doc["effect"] = true;
+
+  JsonArray effects = doc.createNestedArray("effect_list");
+  for (uint8_t i = 0; i < EFFECT_COUNT; ++i)
+  {
+    effects.add(EffectName(static_cast<EffectId>(i)));
+  }
+
+  JsonObject device = doc.createNestedObject("device");
+  device["name"] = kHAConfig.device_name;
+  device["ids"] = kHAConfig.unique_id;
+  device["mdl"] = "UnderBarLighting";
+  device["mf"] = "Somerled Design";
+
+  char payload[512];
+  const size_t len = serializeJson(doc, payload, sizeof(payload));
+  const bool ok = g_mqttClient.publish(topic, reinterpret_cast<const uint8_t *>(payload), len, true);
+  Serial.printf("MQTT discovery payload: %u bytes (buf %u)\n",
+                static_cast<unsigned int>(len),
+                g_mqttClient.getBufferSize());
+  return ok;
+}
+
+void HandleMqttCommand(char *topic, byte *payload, unsigned int length)
+{
+  if (strcmp(topic, kHAConfig.command_topic) != 0)
+  {
+    return;
+  }
+
+  StaticJsonDocument<256> doc;
+  DeserializationError error = deserializeJson(doc, payload, length);
+  if (error)
+  {
+    return;
+  }
+
+  if (doc.containsKey("state"))
+  {
+    const char *state = doc["state"];
+    g_State.power = (strcasecmp(state, "ON") == 0);
+  }
+  if (doc.containsKey("brightness"))
+  {
+    g_State.brightness = (uint8_t)constrain(doc["brightness"].as<int>(), 0, 255);
+  }
+  if (doc.containsKey("effect"))
+  {
+    const char *effect = doc["effect"];
+    g_State.effect = EffectFromName(effect);
+    ApplyEffectPreset(g_State.effect);
+  }
+  if (doc.containsKey("color"))
+  {
+    JsonObject color = doc["color"];
+    int r = color["r"] | g_State.color.r;
+    int g = color["g"] | g_State.color.g;
+    int b = color["b"] | g_State.color.b;
+    g_State.color = CRGB(constrain(r, 0, 255), constrain(g, 0, 255), constrain(b, 0, 255));
+  }
+  if (doc.containsKey("speed"))
+  {
+    g_State.speed = (uint8_t)constrain(doc["speed"].as<int>(), 1, 255);
+    SaveEffectPreset(g_State.effect);
+  }
+  if (doc.containsKey("count"))
+  {
+    g_State.count = (uint8_t)constrain(doc["count"].as<int>(), 1, 16);
+    SaveEffectPreset(g_State.effect);
+  }
+
+  ApplyState();
+  PublishMqttState();
+}
+
+void SetupMqtt()
+{
+  if (strcmp(MQTT_HOST, "CHANGE_ME") == 0 || strlen(MQTT_HOST) == 0)
+  {
+    Serial.println("MQTT disabled: set MQTT_HOST.");
+    return;
+  }
+
+  g_mqttClient.setServer(MQTT_HOST, MQTT_PORT);
+  g_mqttClient.setBufferSize(1024);
+  g_mqttClient.setCallback(HandleMqttCommand);
+}
+
+void MqttLoop()
+{
+  if (strcmp(MQTT_HOST, "CHANGE_ME") == 0 || strlen(MQTT_HOST) == 0)
+  {
+    return;
+  }
+
+  if (!g_wifiConnected)
+  {
+    return;
+  }
+
+  if (!g_mqttClient.connected())
+  {
+    g_mqttConnected = false;
+    if (millis() - g_lastMqttAttempt < 5000)
+    {
+      return;
+    }
+    g_lastMqttAttempt = millis();
+
+    bool connected = false;
+    if (strlen(MQTT_USER) > 0)
+    {
+      connected = g_mqttClient.connect(MQTT_CLIENT_ID, MQTT_USER, MQTT_PASS,
+                                       kHAConfig.availability_topic, 0, true, "offline");
+    }
+    else
+    {
+      connected = g_mqttClient.connect(MQTT_CLIENT_ID, nullptr, nullptr,
+                                       kHAConfig.availability_topic, 0, true, "offline");
+    }
+
+    if (connected)
+    {
+      g_mqttConnected = true;
+      g_mqttClient.subscribe(kHAConfig.command_topic);
+      g_mqttClient.publish(kHAConfig.availability_topic, "online", true);
+      PublishMqttDiscovery();
+      PublishMqttState();
+    }
+    return;
+  }
+
+  g_mqttConnected = true;
+  g_mqttClient.loop();
+}
+
+void MaybePublishMqttState()
+{
+  if (!g_mqttClient.connected())
+  {
+    return;
+  }
+
+  static bool hasLast = false;
+  static LightingState last = {};
+  if (!hasLast)
+  {
+    hasLast = true;
+    last = g_State;
+    PublishMqttState();
+    return;
+  }
+
+  if (last.power != g_State.power ||
+      last.brightness != g_State.brightness ||
+      last.effect != g_State.effect ||
+      last.color != g_State.color ||
+      last.speed != g_State.speed ||
+      last.count != g_State.count)
+  {
+    last = g_State;
+    PublishMqttState();
+  }
+}
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 #define TIMES_PER_SECOND(x) EVERY_N_MILLISECONDS(1000 / x)
@@ -627,6 +841,9 @@ void HandleHttpSet()
     SaveEffectPreset(g_State.effect);
   }
 
+  ApplyState();
+  PublishMqttState();
+
   String json = "{";
   json += "\"power\":" + String(g_State.power ? "true" : "false");
   json += ",\"brightness\":" + String(g_State.brightness);
@@ -647,6 +864,17 @@ void SetupHttpServer()
   {
     Serial.println("SPIFFS mount failed.");
   }
+
+  g_httpServer.on("/mqtt/discover", []()
+                  {
+                    bool ok = PublishMqttDiscoveryWithResult();
+                    String json = "{";
+                    json += "\"mqtt_connected\":" + String(g_mqttClient.connected() ? "true" : "false");
+                    json += ",\"published\":" + String(ok ? "true" : "false");
+                    json += ",\"buffer_size\":" + String(g_mqttClient.getBufferSize());
+                    json += "}";
+                    g_httpServer.send(200, "application/json", json);
+                  });
 
   g_httpServer.on("/", []()
                   {
@@ -782,8 +1010,8 @@ void setup()
   }
   Serial.println("ESP32 Startup...");
   PrintHAStubHelp();
-  SetupBleSerial();
   SetupWiFiAndOTA();
+  SetupMqtt();
   if (g_wifiConnected)
   {
     SetupHttpServer();
@@ -919,6 +1147,8 @@ void loop()
     {
       g_httpServer.handleClient();
     }
+    MqttLoop();
+    MaybePublishMqttState();
     FastLED.delay(10);                   // Show and delay
   }
 }

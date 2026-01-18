@@ -1,17 +1,20 @@
 ### Under bar lighting SPECS ###
+
 __Hardware__
 1. ESP32 Mini
-2. WS2814 LED Strip (50LEDS?)
-3. 128x64 OLED Display (SPI or I2C)
-4. ~Capacitive touch pad~
-5. 5v 3A supply
-6. 3D printed case
-   
+2. WS2814 LED Strip (LEDS?)
+3. 128x64 OLED Display (I2C)
+4. 5v 3A supply
+5. 3D printed case
 
 ***Software***
+- Over the Air updates
+- Web UI
+- many and varied LED effects which make the heart tingle.
 
-• Turn on and off with capacitive touch plate
-• ~Over the Air updates~
-• Ability to be bright white and colored <not needed anymore>
+### Milestones ###
+1. OTA + Web UI baseline (SPIFFS hosting, /status + /set endpoints, OLED status line).
+  - OTA size compliance (trim build to fit OTA partitions; BLE off by default).
+  - Effects + presets pass (marquee/rainbow/twinkle/comet/bounce/fire/meteor/palette/dual/star).
 
-
+2. Integrations (MQTT/Home Assistant) + release polish.
